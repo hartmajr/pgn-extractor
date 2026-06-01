@@ -27,6 +27,8 @@ use shakmaty::{CastlingMode, Chess, EnPassantMode, Position};
 
 use zstd::stream::read::Decoder;
 
+use chess_extract::{tag_value, take_min_tc, tc_passes, DEFAULT_MIN_TC};
+
 fn extract_moves(text: &[u8], limit: usize) -> Vec<&[u8]> {
     let mut out: Vec<&[u8]> = Vec::new();
     let n = text.len();
@@ -140,9 +142,10 @@ fn load_targets(path: &str) -> io::Result<Targets> {
 }
 
 fn main() -> io::Result<()> {
-    let args: Vec<String> = env::args().collect();
+    let mut args: Vec<String> = env::args().collect();
+    let min_tc = take_min_tc(&mut args, DEFAULT_MIN_TC);
     if args.len() < 4 {
-        eprintln!("Usage: {} <input.pgn.zst> <output.pgn> <targets.txt> [max_ply]",
+        eprintln!("Usage: {} <input.pgn.zst> <output.pgn> <targets.txt> [max_ply] [--min-tc <sec>]",
             args.get(0).map(String::as_str).unwrap_or("opening-filter"));
         eprintln!("  targets.txt: each line is a move sequence OR a FEN.");
         eprintln!("    move line: e4 e5 Nf3 Nc6 Nc3 Nf6 d3");
@@ -150,6 +153,8 @@ fn main() -> io::Result<()> {
         eprintln!("  max_ply: optional cap on how many plies of each game to search.");
         eprintln!("    Defaults to the opening depth for move-only files, or the whole game when");
         eprintln!("    FENs are present. Set it (e.g. 30) to bound the search and run faster.");
+        eprintln!("  --min-tc: minimum time control in seconds (default {DEFAULT_MIN_TC}; removes");
+        eprintln!("    bullet/ultrabullet). Set 0 to keep all time controls.");
         process::exit(2);
     }
     let (input_path, output_path, targets_path) = (&args[1], &args[2], &args[3]);
@@ -171,7 +176,7 @@ fn main() -> io::Result<()> {
         max_ply_arg.unwrap_or(targets.move_depth)
     };
     let limit_desc = if limit == usize::MAX { "whole game".to_string() } else { format!("{limit} plies") };
-    eprintln!("Loaded {} distinct target position(s). Searching {} of each game.",
+    eprintln!("Loaded {} distinct target position(s). Searching {} of each game; time control >= {min_tc}s.",
         targets.keys.len(), limit_desc);
 
     let decoder = Decoder::new(File::open(input_path)?)?;
@@ -181,6 +186,7 @@ fn main() -> io::Result<()> {
     let mut game: Vec<u8> = Vec::with_capacity(8192);
     let mut movetext: Vec<u8> = Vec::with_capacity(4096);
     let mut in_movetext = false;
+    let mut tc_ok = true;
     let mut total: u64 = 0;
     let mut kept: u64 = 0;
     let mut line: Vec<u8> = Vec::with_capacity(256);
@@ -193,19 +199,26 @@ fn main() -> io::Result<()> {
         if (eof || line.starts_with(b"[Event ")) && !game.is_empty() {
             total += 1;
             let moves = extract_moves(&movetext, limit);
-            if matches_target(&moves, &targets.keys) {
+            if tc_ok && matches_target(&moves, &targets.keys) {
                 writer.write_all(&game)?;
                 kept += 1;
             }
             game.clear();
             movetext.clear();
             in_movetext = false;
+            tc_ok = true;
             if total % 2_000_000 == 0 {
                 eprintln!("  processed {total} games, kept {kept} ...");
             }
         }
 
         if eof { break; }
+
+        if !in_movetext && line.starts_with(b"[TimeControl ") {
+            if let Some(v) = tag_value(&line) {
+                tc_ok = tc_passes(v, min_tc);
+            }
+        }
 
         if !in_movetext && (line == b"\n" || line == b"\r\n") {
             in_movetext = true;

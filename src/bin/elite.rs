@@ -21,45 +21,29 @@ use std::process;
 
 use zstd::stream::read::Decoder;
 
-fn tag_value(line: &[u8]) -> Option<&[u8]> {
-    let start = line.iter().position(|&b| b == b'"')? + 1;
-    let rel_end = line[start..].iter().position(|&b| b == b'"')?;
-    Some(&line[start..start + rel_end])
-}
-
-fn parse_u32(bytes: &[u8]) -> Option<u32> {
-    std::str::from_utf8(bytes).ok()?.trim().parse().ok()
-}
-
-/// Lichess estimated game duration: base + 40 * increment. None for correspondence ("-").
-fn tc_estimated_seconds(tc: &[u8]) -> Option<u32> {
-    if tc == b"-" { return None; }
-    let s = std::str::from_utf8(tc).ok()?;
-    let mut parts = s.split('+');
-    let base: u32 = parts.next()?.trim().parse().ok()?;
-    let inc: u32 = parts.next().unwrap_or("0").trim().parse().ok()?;
-    Some(base + 40 * inc)
-}
+use chess_extract::{parse_u32, tag_value, take_min_tc, tc_passes, DEFAULT_MIN_TC};
 
 fn main() -> io::Result<()> {
-    let args: Vec<String> = env::args().collect();
+    let mut args: Vec<String> = env::args().collect();
+    let min_tc = take_min_tc(&mut args, DEFAULT_MIN_TC);
+
     if args.len() < 3 {
-        eprintln!("Usage: {} <input.pgn.zst> <output.pgn> [min_low=2400] [min_high=min_low] [min_tc_seconds=180]",
+        eprintln!("Usage: {} <input.pgn.zst> <output.pgn> [min_low=2400] [min_high=min_low] [--min-tc <sec>]",
             args.get(0).map(String::as_str).unwrap_or("elite"));
         eprintln!("  Keeps a game when the LOWER-rated player is >= min_low AND the HIGHER-rated");
-        eprintln!("  player is >= min_high, and the time control is >= min_tc_seconds.");
+        eprintln!("  player is >= min_high, and the time control is >= --min-tc seconds.");
         eprintln!("  Colour is irrelevant. min_high defaults to min_low (i.e. both players >= min_low).");
+        eprintln!("  --min-tc defaults to {DEFAULT_MIN_TC} (removes bullet/ultrabullet); set 0 to keep all.");
         eprintln!("  Examples:");
-        eprintln!("    elite in.zst out.pgn 2400            # both players >= 2400");
-        eprintln!("    elite in.zst out.pgn 2300 2500       # one player >= 2500, the other >= 2300");
-        eprintln!("    elite in.zst out.pgn 2400 2400 480   # both >= 2400, rapid or slower");
+        eprintln!("    elite in.zst out.pgn 2400                  # both players >= 2400");
+        eprintln!("    elite in.zst out.pgn 2300 2500             # one >= 2500, the other >= 2300");
+        eprintln!("    elite in.zst out.pgn 2400 --min-tc 480     # both >= 2400, rapid or slower");
         process::exit(2);
     }
     let input_path = &args[1];
     let output_path = &args[2];
     let min_low: u32 = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(2400);
     let min_high: u32 = args.get(4).and_then(|s| s.parse().ok()).unwrap_or(min_low);
-    let min_tc: u32 = args.get(5).and_then(|s| s.parse().ok()).unwrap_or(180);
 
     eprintln!("Lower-rated player >= {min_low}, higher-rated player >= {min_high}, time control >= {min_tc}s");
 
@@ -103,10 +87,9 @@ fn main() -> io::Result<()> {
         } else if line.starts_with(b"[BlackElo ") {
             black_elo = tag_value(&line).and_then(parse_u32).unwrap_or(0);
         } else if line.starts_with(b"[TimeControl ") {
-            tc_ok = match tag_value(&line).map(tc_estimated_seconds) {
-                Some(Some(secs)) => secs >= min_tc,
-                _ => true,
-            };
+            if let Some(v) = tag_value(&line) {
+                tc_ok = tc_passes(v, min_tc);
+            }
         }
         game.extend_from_slice(&line);
     }

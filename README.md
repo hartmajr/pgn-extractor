@@ -13,10 +13,12 @@ There are three independent executables, each for one job:
 
 | Tool      | Filters by                                   |
 |-----------|----------------------------------------------|
-| `elite`   | player ratings + time control                |
+| `elite`   | player ratings                               |
 | `eco`     | ECO opening code                             |
 | `opening` | opening line or position (FEN), incl. transpositions |
 
+All three additionally apply a minimum time-control floor (default 180 s, removing
+bullet and ultrabullet); see [Time control](#time-control--shared-by-all-three-tools).
 They share no state and are run separately. `cargo build --release` builds all three.
 
 ---
@@ -64,18 +66,13 @@ Progress and a final count are printed to stderr.
 ### `elite` — ratings and time control
 
 ```
-elite <input.pgn.zst> <output.pgn> [min_low=2400] [min_high=min_low] [min_tc_seconds=180]
+elite <input.pgn.zst> <output.pgn> [min_low=2400] [min_high=min_low] [--min-tc <sec>]
 ```
 
-Keeps a game when the **lower-rated** player is at least `min_low`, the
-**higher-rated** player is at least `min_high`, and the time control is at least
-`min_tc_seconds`. Colour is irrelevant — the floors are applied to the lower and
-higher of the two ratings. `min_high` defaults to `min_low`, which gives the simple
-"both players ≥ X" case; set it higher for an asymmetric pairing.
-
-The time control is measured by Lichess's own estimated game duration,
-`base + 40 × increment` seconds, so the default of `180` removes bullet and
-ultrabullet while keeping blitz and slower. Correspondence games (no clock) are kept.
+Keeps a game when the **lower-rated** player is at least `min_low` and the
+**higher-rated** player is at least `min_high`. Colour is irrelevant — the floors are
+applied to the lower and higher of the two ratings. `min_high` defaults to `min_low`,
+which gives the simple "both players ≥ X" case; set it higher for an asymmetric pairing.
 
 ```sh
 # Both players >= 2400, no bullet/ultrabullet (the defaults)
@@ -85,20 +82,18 @@ elite lichess_db_standard_rated_2025-05.pgn.zst elite_2025-05.pgn 2400
 elite lichess_db_standard_rated_2025-05.pgn.zst mixed_2025-05.pgn 2300 2500
 
 # Both players >= 2200, rapid or slower (>= 8 min estimated)
-elite lichess_db_standard_rated_2025-05.pgn.zst strong_2025-05.pgn 2200 2200 480
+elite lichess_db_standard_rated_2025-05.pgn.zst strong_2025-05.pgn 2200 --min-tc 480
 ```
-
-> Argument order note: the two rating floors come first, then the time control. To
-> set a non-default time control you therefore give both floors, e.g. `2400 2400 480`.
 
 ### `eco` — opening code
 
 ```
-eco <input.pgn.zst> <output.pgn> <code-prefix> [more-prefixes...]
+eco <input.pgn.zst> <output.pgn> <code-prefix> [more-prefixes...] [--min-tc <sec>]
 ```
 
-Keeps a game whose `ECO` tag **starts with** any of the given prefixes. Because it's
-a prefix match, you can give an exact code or a whole family:
+Keeps a game whose `ECO` tag **starts with** any of the given prefixes (and which
+clears the time-control floor). Because it's a prefix match, you can give an exact
+code or a whole family:
 
 ```sh
 eco month.pgn.zst najdorf.pgn B90              # exactly B90
@@ -110,7 +105,7 @@ eco month.pgn.zst all_B.pgn B                  # every B code
 ### `opening` — opening line or position
 
 ```
-opening <input.pgn.zst> <output.pgn> <targets.txt> [max_ply]
+opening <input.pgn.zst> <output.pgn> <targets.txt> [max_ply] [--min-tc <sec>]
 ```
 
 Matches by the **position reached**, not by move text, so transpositions are caught
@@ -143,6 +138,22 @@ Notes:
   tool only searches as deep as your longest line. For FENs, which can occur anywhere,
   it searches the whole game by default; cap it (e.g. `30`) when you know the position
   is reached early and want it to run faster.
+
+### Time control — shared by all three tools
+
+Every tool applies a minimum time-control floor, so bullet and ultrabullet games are
+removed from all output by default. The control is measured by Lichess's own estimated
+game duration, `base + 40 × increment` seconds; the default floor is **180 seconds**,
+which removes bullet and ultrabullet while keeping blitz and slower. Correspondence
+games (no clock) are kept.
+
+Override it per run with `--min-tc <seconds>`, which may appear anywhere on the command
+line:
+
+```sh
+elite   month.pgn.zst out.pgn 2400 --min-tc 480   # rapid or slower only
+opening month.pgn.zst out.pgn targets.txt --min-tc 0   # keep every time control
+```
 
 ---
 
