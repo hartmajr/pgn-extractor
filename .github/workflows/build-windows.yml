@@ -1,0 +1,23 @@
+name: build-windows
+
+on:
+  push:
+  workflow_dispatch:        # lets you run it manually from the Actions tab
+
+jobs:
+  build:
+    runs-on: windows-latest # Rust + MSVC build tools are preinstalled
+    env:
+      # Statically link the C runtime so the .exe needs no extra DLLs.
+      RUSTFLAGS: "-C target-feature=+crt-static"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build release
+        run: cargo build --release
+
+      - name: Upload Windows executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: opening-filter-windows
+          path: target/release/*.exe
