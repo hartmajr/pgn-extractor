@@ -1,0 +1,12 @@
+# One position per line; lines starting with # are ignored.
+# Transpositions are caught automatically, so one move order (or one FEN) per
+# position is enough.
+#
+# Move sequences:
+e4 e5 Nf3 Nc6 Nc3 Nf6 d3
+e4 e5 Nf3 Nc6 Nc3 Nf6 Bb5
+e4 e5 Nf3 Nc6 Nc3 Nf6 Nxe5
+e4 e5 Nf3 Nc6 Nc3 Nf6 g3
+#
+# FENs (move counters optional and ignored):
+r1bqkb1r/pppp1ppp/2n2n2/4p3/4P3/2NP1N2/PPP2PPP/R1BQKB1R b KQkq - 0 1

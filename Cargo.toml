@@ -1,0 +1,18 @@
+[package]
+name = "chess-extract"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+authors = ["John Hartmann"]
+description = "Fast filters for the Lichess game database (elite, eco, opening/FEN)"
+
+# Three independent executables: elite, eco, opening.
+# `cargo build --release` builds all of them.
+
+[dependencies]
+zstd = "0.13"
+shakmaty = "0.27"
+
+[profile.release]
+lto = true
+codegen-units = 1
