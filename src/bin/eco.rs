@@ -21,17 +21,19 @@ use std::process;
 
 use zstd::stream::read::Decoder;
 
-use chess_extract::{tag_value, take_min_tc, tc_passes, DEFAULT_MIN_TC};
+use chess_extract::{tag_value, take_flag, take_min_tc, tc_passes, DEFAULT_MIN_TC};
 
 fn main() -> io::Result<()> {
     let mut args: Vec<String> = env::args().collect();
     let min_tc = take_min_tc(&mut args, DEFAULT_MIN_TC);
+    let allow_correspondence = !take_flag(&mut args, "--no-correspondence");
 
     if args.len() < 4 {
         eprintln!("Usage: {} <input.pgn.zst> <output.pgn> <code-prefix> [more-prefixes...] [--min-tc <sec>]",
             args.get(0).map(String::as_str).unwrap_or("eco"));
         eprintln!("  Keeps games whose ECO tag starts with any given prefix AND whose time");
         eprintln!("  control is >= --min-tc seconds (default {DEFAULT_MIN_TC}, which removes bullet/ultrabullet).");
+        eprintln!("  --no-correspondence also drops correspondence games (TimeControl \"-\").");
         eprintln!("  Examples: `B90` (exact), `B9` (B90-B99), `B` (all B), `B2 B3 B4` (several).");
         process::exit(2);
     }
@@ -39,7 +41,8 @@ fn main() -> io::Result<()> {
     let output_path = &args[2];
     let prefixes: Vec<Vec<u8>> = args[3..].iter().map(|s| s.as_bytes().to_vec()).collect();
 
-    eprintln!("Matching ECO prefixes: {}; time control >= {min_tc}s", args[3..].join(", "));
+    eprintln!("Matching ECO prefixes: {}; time control >= {min_tc}s{}", args[3..].join(", "),
+        if allow_correspondence { "" } else { ", excluding correspondence" });
 
     let decoder = Decoder::new(File::open(input_path)?)?;
     let mut reader = BufReader::with_capacity(16 * 1024 * 1024, decoder);
@@ -78,7 +81,7 @@ fn main() -> io::Result<()> {
             }
         } else if line.starts_with(b"[TimeControl ") {
             if let Some(v) = tag_value(&line) {
-                tc_ok = tc_passes(v, min_tc);
+                tc_ok = tc_passes(v, min_tc, allow_correspondence);
             }
         }
         game.extend_from_slice(&line);

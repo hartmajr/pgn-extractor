@@ -21,11 +21,12 @@ use std::process;
 
 use zstd::stream::read::Decoder;
 
-use chess_extract::{parse_u32, tag_value, take_min_tc, tc_passes, DEFAULT_MIN_TC};
+use chess_extract::{parse_u32, tag_value, take_flag, take_min_tc, tc_passes, DEFAULT_MIN_TC};
 
 fn main() -> io::Result<()> {
     let mut args: Vec<String> = env::args().collect();
     let min_tc = take_min_tc(&mut args, DEFAULT_MIN_TC);
+    let allow_correspondence = !take_flag(&mut args, "--no-correspondence");
 
     if args.len() < 3 {
         eprintln!("Usage: {} <input.pgn.zst> <output.pgn> [min_low=2400] [min_high=min_low] [--min-tc <sec>]",
@@ -34,6 +35,7 @@ fn main() -> io::Result<()> {
         eprintln!("  player is >= min_high, and the time control is >= --min-tc seconds.");
         eprintln!("  Colour is irrelevant. min_high defaults to min_low (i.e. both players >= min_low).");
         eprintln!("  --min-tc defaults to {DEFAULT_MIN_TC} (removes bullet/ultrabullet); set 0 to keep all.");
+        eprintln!("  --no-correspondence also drops correspondence games (TimeControl \"-\").");
         eprintln!("  Examples:");
         eprintln!("    elite in.zst out.pgn 2400                  # both players >= 2400");
         eprintln!("    elite in.zst out.pgn 2300 2500             # one >= 2500, the other >= 2300");
@@ -45,7 +47,8 @@ fn main() -> io::Result<()> {
     let min_low: u32 = args.get(3).and_then(|s| s.parse().ok()).unwrap_or(2400);
     let min_high: u32 = args.get(4).and_then(|s| s.parse().ok()).unwrap_or(min_low);
 
-    eprintln!("Lower-rated player >= {min_low}, higher-rated player >= {min_high}, time control >= {min_tc}s");
+    eprintln!("Lower-rated player >= {min_low}, higher-rated player >= {min_high}, time control >= {min_tc}s{}",
+        if allow_correspondence { "" } else { ", excluding correspondence" });
 
     let decoder = Decoder::new(File::open(input_path)?)?;
     let mut reader = BufReader::with_capacity(16 * 1024 * 1024, decoder);
@@ -88,7 +91,7 @@ fn main() -> io::Result<()> {
             black_elo = tag_value(&line).and_then(parse_u32).unwrap_or(0);
         } else if line.starts_with(b"[TimeControl ") {
             if let Some(v) = tag_value(&line) {
-                tc_ok = tc_passes(v, min_tc);
+                tc_ok = tc_passes(v, min_tc, allow_correspondence);
             }
         }
         game.extend_from_slice(&line);

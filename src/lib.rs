@@ -42,13 +42,35 @@ pub fn tc_estimated_seconds(tc: &[u8]) -> Option<u32> {
 }
 
 /// Does a TimeControl tag value clear the floor?
-/// Correspondence games and unparseable/missing values are treated as passing
-/// (they are not bullet), matching the elite tool's original behaviour.
-pub fn tc_passes(tc: &[u8], min_tc: u32) -> bool {
+///
+/// - Correspondence games (`"-"`) are kept iff `allow_correspondence` is true.
+/// - Real clock controls are kept iff their estimated duration is >= `min_tc`.
+/// - Anything else unparseable is treated as passing (we can't measure it, so we
+///   don't drop it).
+pub fn tc_passes(tc: &[u8], min_tc: u32, allow_correspondence: bool) -> bool {
+    if tc == b"-" {
+        return allow_correspondence;
+    }
     match tc_estimated_seconds(tc) {
         Some(secs) => secs >= min_tc,
         None => true,
     }
+}
+
+/// Pull an optional boolean flag (e.g. `--no-correspondence`) out of `args`,
+/// removing every occurrence in place. Returns true if the flag was present.
+pub fn take_flag(args: &mut Vec<String>, name: &str) -> bool {
+    let mut found = false;
+    let mut i = 0;
+    while i < args.len() {
+        if args[i] == name {
+            args.remove(i);
+            found = true;
+        } else {
+            i += 1;
+        }
+    }
+    found
 }
 
 /// Pull an optional `--min-tc <seconds>` / `--min-tc=<seconds>` flag out of `args`,

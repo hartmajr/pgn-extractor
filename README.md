@@ -66,7 +66,7 @@ Progress and a final count are printed to stderr.
 ### `elite` — ratings and time control
 
 ```
-elite <input.pgn.zst> <output.pgn> [min_low=2400] [min_high=min_low] [--min-tc <sec>]
+elite <input.pgn.zst> <output.pgn> [min_low=2400] [min_high=min_low] [--min-tc <sec>] [--no-correspondence]
 ```
 
 Keeps a game when the **lower-rated** player is at least `min_low` and the
@@ -88,7 +88,7 @@ elite lichess_db_standard_rated_2025-05.pgn.zst strong_2025-05.pgn 2200 --min-tc
 ### `eco` — opening code
 
 ```
-eco <input.pgn.zst> <output.pgn> <code-prefix> [more-prefixes...] [--min-tc <sec>]
+eco <input.pgn.zst> <output.pgn> <code-prefix> [more-prefixes...] [--min-tc <sec>] [--no-correspondence]
 ```
 
 Keeps a game whose `ECO` tag **starts with** any of the given prefixes (and which
@@ -105,7 +105,7 @@ eco month.pgn.zst all_B.pgn B                  # every B code
 ### `opening` — opening line or position
 
 ```
-opening <input.pgn.zst> <output.pgn> <targets.txt> [max_ply] [--min-tc <sec>]
+opening <input.pgn.zst> <output.pgn> <targets.txt> [max_ply] [--min-tc <sec>] [--no-correspondence]
 ```
 
 Matches by the **position reached**, not by move text, so transpositions are caught
@@ -153,6 +153,14 @@ line:
 ```sh
 elite   month.pgn.zst out.pgn 2400 --min-tc 480   # rapid or slower only
 opening month.pgn.zst out.pgn targets.txt --min-tc 0   # keep every time control
+```
+
+Correspondence games (tagged `TimeControl "-"`, no clock) are **kept** by default,
+since the time floor can't apply to them. Add `--no-correspondence` to any tool to drop
+them as well:
+
+```sh
+elite month.pgn.zst out.pgn 2400 --no-correspondence
 ```
 
 ---

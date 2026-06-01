@@ -27,7 +27,7 @@ use shakmaty::{CastlingMode, Chess, EnPassantMode, Position};
 
 use zstd::stream::read::Decoder;
 
-use chess_extract::{tag_value, take_min_tc, tc_passes, DEFAULT_MIN_TC};
+use chess_extract::{tag_value, take_flag, take_min_tc, tc_passes, DEFAULT_MIN_TC};
 
 fn extract_moves(text: &[u8], limit: usize) -> Vec<&[u8]> {
     let mut out: Vec<&[u8]> = Vec::new();
@@ -144,6 +144,7 @@ fn load_targets(path: &str) -> io::Result<Targets> {
 fn main() -> io::Result<()> {
     let mut args: Vec<String> = env::args().collect();
     let min_tc = take_min_tc(&mut args, DEFAULT_MIN_TC);
+    let allow_correspondence = !take_flag(&mut args, "--no-correspondence");
     if args.len() < 4 {
         eprintln!("Usage: {} <input.pgn.zst> <output.pgn> <targets.txt> [max_ply] [--min-tc <sec>]",
             args.get(0).map(String::as_str).unwrap_or("opening-filter"));
@@ -155,6 +156,7 @@ fn main() -> io::Result<()> {
         eprintln!("    FENs are present. Set it (e.g. 30) to bound the search and run faster.");
         eprintln!("  --min-tc: minimum time control in seconds (default {DEFAULT_MIN_TC}; removes");
         eprintln!("    bullet/ultrabullet). Set 0 to keep all time controls.");
+        eprintln!("  --no-correspondence also drops correspondence games (TimeControl \"-\").");
         process::exit(2);
     }
     let (input_path, output_path, targets_path) = (&args[1], &args[2], &args[3]);
@@ -178,6 +180,7 @@ fn main() -> io::Result<()> {
     let limit_desc = if limit == usize::MAX { "whole game".to_string() } else { format!("{limit} plies") };
     eprintln!("Loaded {} distinct target position(s). Searching {} of each game; time control >= {min_tc}s.",
         targets.keys.len(), limit_desc);
+    if !allow_correspondence { eprintln!("Excluding correspondence games."); }
 
     let decoder = Decoder::new(File::open(input_path)?)?;
     let mut reader = BufReader::with_capacity(16 * 1024 * 1024, decoder);
@@ -216,7 +219,7 @@ fn main() -> io::Result<()> {
 
         if !in_movetext && line.starts_with(b"[TimeControl ") {
             if let Some(v) = tag_value(&line) {
-                tc_ok = tc_passes(v, min_tc);
+                tc_ok = tc_passes(v, min_tc, allow_correspondence);
             }
         }
 
